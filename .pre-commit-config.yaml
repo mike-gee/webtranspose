@@ -1,0 +1,28 @@
+repos:
+-   repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.4.0
+    hooks:
+      - id: check-toml
+      - id: check-yaml
+      - id: debug-statements
+      - id: check-merge-conflict
+      - id: check-json
+      - id: end-of-file-fixer
+-   repo: https://github.com/timothycrosley/isort
+    rev: 5.12.0
+    hooks:
+      - id: isort
+-   repo: https://github.com/psf/black
+    rev: 23.3.0
+    hooks:
+      - id: black
+-   repo: local
+    hooks:
+      - id: flakeheaven
+        name: flakeheaven
+        description: "`FlakeHeaven` it's a Flake8 wrapper to make it cools."
+        entry: poetry run flakeheaven
+        args: [lint]
+        language: system
+        types: [python]
+        require_serial: true

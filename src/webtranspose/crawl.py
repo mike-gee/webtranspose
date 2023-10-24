@@ -1,0 +1,660 @@
+import asyncio
+import json
+import logging
+import os
+import shutil
+import tempfile
+import urllib.parse
+import uuid
+import zipfile
+from datetime import datetime
+from fnmatch import fnmatch
+from urllib.parse import urljoin, urlparse
+
+import httpx
+from bs4 import BeautifulSoup
+
+from .webt_api import run_webt_api
+
+
+class Crawl:
+    def __init__(
+        self,
+        url,
+        allowed_urls=[],
+        banned_urls=[],
+        n_workers=1,
+        max_pages=15,
+        render_js=False,
+        output_dir="webtranspose-out",
+        verbose=False,
+        api_key=None,
+    ):
+        """
+        Initialize the Crawl object.
+
+        :param url: The base URL to start crawling from.
+        :param allowed_urls: A list of allowed URLs to crawl.
+        :param banned_urls: A list of banned URLs to exclude from crawling.
+        :param n_workers: The number of worker tasks to use for crawling.
+        :param max_pages: The maximum number of pages to crawl.
+        :param render_js: Whether to render JavaScript on crawled pages.
+        :param output_dir: The directory to store the crawled data.
+        :param verbose: Whether to print verbose logging messages.
+        :param api_key: The API key to use for webt_api calls.
+        """
+        self.api_key = api_key
+        if self.api_key is None and "WEBTRANSPOSE_API_KEY" in os.environ:
+            self.api_key = os.environ["WEBTRANSPOSE_API_KEY"]
+
+        self.base_url = url
+        self.allowed_urls = allowed_urls
+        self.banned_urls = banned_urls
+        self.max_pages = max_pages
+        self.queue = asyncio.Queue()
+        self.queue.put_nowait(
+            {
+                "url": self.base_url,
+                "parent_urls": [],
+            }
+        )
+        self.output_dir = output_dir
+        self.visited_urls = {}
+        self.ignored_urls = set()
+        self.n_workers = n_workers
+        if not os.path.exists(self.output_dir):
+            os.makedirs(self.output_dir)
+        self.created = False
+        self.render_js = render_js
+        self.crawl_id = None
+        if self.api_key is None:
+            self.crawl_id = str(uuid.uuid4())
+        self.verbose = verbose
+
+    @staticmethod
+    async def crawl_worker(
+        name,
+        queue,
+        crawl_id,
+        visited_urls,
+        allowed_urls,
+        banned_urls,
+        output_dir,
+        base_url,
+        max_pages,
+        leftover_queue,
+        verbose,
+    ):
+        """
+        Worker function for crawling URLs.
+
+        :param name: The name of the worker.
+        :param queue: The queue of URLs to crawl.
+        :param crawl_id: The ID of the crawl.
+        :param visited_urls: A dictionary of visited URLs and their file paths.
+        :param allowed_urls: A list of allowed URLs to crawl.
+        :param banned_urls: A list of banned URLs to exclude from crawling.
+        :param output_dir: The directory to store the crawled data.
+        :param base_url: The base URL of the crawl.
+        :param max_pages: The maximum number of pages to crawl.
+        :param leftover_queue: The queue for leftover URLs.
+        :param verbose: Whether to print verbose logging messages.
+        """
+        if verbose:
+            logging.info(f"{name}: Starting crawl of {base_url}")
+        while max_pages is None or len(visited_urls) < max_pages or not queue.empty():
+            curr_url_data = await queue.get()
+            curr_url = curr_url_data["url"]
+            parent_urls = curr_url_data["parent_urls"]
+            base_url_netloc = urlparse(base_url).netloc
+            if (
+                (
+                    (
+                        urlparse(curr_url).netloc == base_url_netloc
+                        and not any(fnmatch(curr_url, banned) for banned in banned_urls)
+                    )
+                    or any(fnmatch(curr_url, allowed) for allowed in allowed_urls)
+                )
+                and curr_url not in visited_urls
+                and len(visited_urls) < max_pages
+            ):
+                base_dir = os.path.join(output_dir, base_url_netloc)
+                if not os.path.exists(base_dir):
+                    os.makedirs(base_dir)
+                filename = urllib.parse.quote_plus(curr_url).replace("/", "_")
+                filepath = os.path.join(base_dir, filename) + ".json"
+                async with httpx.AsyncClient() as client:
+                    page = await client.get(curr_url)
+                    soup = BeautifulSoup(page.content, "lxml")
+                    for link in soup.find_all("a"):
+                        url = link.get("href")
+                        if url:
+                            joined_url = urljoin(base_url, url)
+                            if joined_url.startswith("http"):
+                                queue.put_nowait(
+                                    {
+                                        "url": joined_url,
+                                        "parent_urls": parent_urls + [curr_url],
+                                    }
+                                )
+                    visited_urls[curr_url] = filepath
+                    data = {
+                        "crawl_id": crawl_id,
+                        "url": curr_url,
+                        "date": datetime.now().isoformat(),
+                        "parent_urls": parent_urls,
+                        "html": str(soup),
+                        "text": soup.get_text(),
+                        "title": soup.title.string if soup.title else "",
+                    }
+                    with open(filepath, "w") as f:
+                        json.dump(data, f)
+
+            elif curr_url not in visited_urls and (
+                urlparse(curr_url).netloc == urlparse(base_url).netloc
+                or any(fnmatch(curr_url, allowed) for allowed in allowed_urls)
+            ):
+                leftover_queue.put_nowait(
+                    {
+                        "url": curr_url,
+                        "parent_urls": parent_urls,
+                    }
+                )
+            queue.task_done()
+
+    async def create_crawl_api(self):
+        """
+        Creates a Crawl on https://webtranspose.com
+        """
+        create_json = {
+            "url": self.base_url,
+            "render_js": self.render_js,
+            "max_pages": self.max_pages,
+            "allowed_urls": self.allowed_urls,
+            "banned_urls": self.banned_urls,
+        }
+        out_json = run_webt_api(
+            create_json,
+            "v1/crawl/create-dev",
+            self.api_key,
+        )
+        self.crawl_id = out_json["crawl_id"]
+        self.created = True
+
+    async def crawl(self):
+        """
+        Resume crawling of Crawl object.
+        """
+        if self.api_key is None:
+            leftover_queue = asyncio.Queue()
+            tasks = []
+            for i in range(self.n_workers):
+                task = asyncio.create_task(
+                    self.crawl_worker(
+                        f"worker-{i}",
+                        self.queue,
+                        self.crawl_id,
+                        self.visited_urls,
+                        self.allowed_urls,
+                        self.banned_urls,
+                        self.output_dir,
+                        self.base_url,
+                        self.max_pages,
+                        leftover_queue,
+                        self.verbose,
+                    )
+                )
+                tasks.append(task)
+
+            await self.queue.join()
+            for task in tasks:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+            self.queue = leftover_queue
+            self.to_metadata()
+        else:
+            if not self.created:
+                await self.create_crawl_api()
+            crawl_json = {
+                "crawl_id": self.crawl_id,
+            }
+            run_webt_api(
+                crawl_json,
+                "v1/crawl/resume-dev",
+                self.api_key,
+            )
+        return self
+
+    def get_queue(self, n=10):
+        """
+        Get a list of URLs from the queue.
+
+        Args:
+            n (int): The number of URLs to retrieve from the queue. Defaults to 10.
+
+        Returns:
+            list: A list of URLs from the queue.
+        """
+        if self.api_key is None:
+            urls = []
+            for _ in range(n):
+                try:
+                    url = self.queue.get_nowait()
+                    urls.append(url)
+                except asyncio.QueueEmpty:
+                    break
+            for url in urls:
+                self.queue.put_nowait(url)
+            return urls
+        else:
+            if not self.created:
+                return [self.base_url]
+            queue_json = {
+                "crawl_id": self.crawl_id,
+                "n": n,
+            }
+            out_json = run_webt_api(
+                queue_json,
+                "v1/crawl/get-queue-dev",
+                self.api_key,
+            )
+            return out_json["urls"]
+
+    def set_allowed_urls(self, allowed_urls):
+        """
+        Set the allowed URLs for the crawl.
+
+        Args:
+            allowed_urls (list): A list of allowed URLs.
+
+        Returns:
+            self: The Crawl object.
+        """
+        if not self.created:
+            self.allowed_urls = allowed_urls
+            self.to_metadata()
+        else:
+            update_json = {
+                "crawl_id": self.crawl_id,
+                "allowed_urls": allowed_urls,
+            }
+            run_webt_api(
+                update_json,
+                "v1/crawl/set-allowed-dev",
+                self.api_key,
+            )
+        return self
+
+    def set_ignored_urls(self, ignored_urls):
+        """
+        Set the ignored URLs for the crawl.
+
+        Args:
+            ignored_urls (list): A list of ignored URLs.
+
+        Returns:
+            self: The Crawl object.
+        """
+        if not self.created:
+            self.ignored_urls = ignored_urls
+            self.to_metadata()
+        else:
+            update_json = {
+                "crawl_id": self.crawl_id,
+                "ignored_urls": ignored_urls,
+            }
+            run_webt_api(
+                update_json,
+                "v1/crawl/set-ignored-dev",
+                self.api_key,
+            )
+        return self
+
+    def get_filename(self, url):
+        """
+        Get the filename associated with a visited URL.
+
+        Args:
+            url (str): The visited URL.
+
+        Returns:
+            str: The filename associated with the visited URL.
+
+        Raises:
+            ValueError: If the URL is not found in the visited URLs.
+        """
+        try:
+            return self.visited_urls[url]
+        except KeyError:
+            raise ValueError(f"URL {url} not found in visited URLs")
+
+    def set_max_pages(self, max_pages):
+        """
+        Set the maximum number of pages to crawl.
+
+        Args:
+            max_pages (int): The maximum number of pages to crawl.
+
+        Returns:
+            self: The Crawl object.
+        """
+        if not self.created:
+            self.max_pages = max_pages
+            self.to_metadata()
+        else:
+            max_pages_json = {
+                "crawl_id": self.crawl_id,
+                "max_pages": max_pages,
+            }
+            run_webt_api(
+                max_pages_json,
+                "v1/crawl/set-max-pages-dev",
+                self.api_key,
+            )
+        return self
+
+    def status(self):
+        """
+        Get the status of the Crawl object.
+
+        Returns:
+            dict: The status of the Crawl object.
+        """
+        if not self.created:
+            status_json = {
+                "crawl_id": self.crawl_id,
+                "loc": "local" if self.api_key is None else "cloud",
+                "base_url": self.base_url,
+                "max_pages": self.max_pages,
+                "num_visited": len(self.visited_urls),
+                "num_ignored": len(self.ignored_urls),
+                "num_queued": self.queue.qsize(),
+                "banned_urls": self.banned_urls,
+                "allowed_urls": self.allowed_urls,
+            }
+            status_json["n_workers"] = self.n_workers
+            return status_json
+
+        status_json = {
+            "crawl_id": self.crawl_id,
+        }
+        crawl_status = run_webt_api(
+            status_json,
+            "v1/crawl/get-dev",
+            self.api_key,
+        )
+        crawl_status["loc"] = "cloud"
+        return crawl_status
+
+    def get_visited(self):
+        """
+        Get a list of visited URLs.
+
+        Returns:
+            list: A list of visited URLs.
+        """
+        if not self.created:
+            return list(self.visited_urls)
+
+        visited_json = {
+            "crawl_id": self.crawl_id,
+        }
+        out_json = run_webt_api(
+            visited_json,
+            "v1/crawl/get-dev/visited",
+            self.api_key,
+        )
+        return out_json["pages"]
+
+    def get_ignored(self):
+        """
+        Get a list of ignored URLs.
+
+        Returns:
+            list: A list of ignored URLs.
+        """
+        if not self.created:
+            return list(self.ignored_urls)
+
+        ignored_json = {
+            "crawl_id": self.crawl_id,
+        }
+        out_json = run_webt_api(
+            ignored_json,
+            "v1/crawl/get-dev/ignored",
+            self.api_key,
+        )
+        return out_json["pages"]
+
+    def download(self):
+        """
+        Download the output of the crawl.
+        """
+        if self.created:
+            download_json = {
+                "crawl_id": self.crawl_id,
+            }
+            out_json = run_webt_api(
+                download_json,
+                "v1/crawl/download-dev",
+                self.api_key,
+            )
+            presigned_url = out_json["url"]
+            with tempfile.TemporaryDirectory() as tmpdir:
+                zip_file_path = os.path.join(tmpdir, "temp.zip")
+                with open(zip_file_path, "wb") as f:
+                    response = httpx.get(presigned_url)
+                    f.write(response.content)
+
+                with zipfile.ZipFile(zip_file_path, "r") as zip_ref:
+                    zip_ref.extractall(tmpdir)
+
+                for root, _, files in os.walk(tmpdir):
+                    for file in files:
+                        if file.endswith(".json"):
+                            json_file = os.path.join(root, file)
+                            with open(json_file, "r") as f:
+                                data = json.load(f)
+                            url = data["url"]
+                            base_url_netloc = urlparse(self.base_url).netloc
+                            base_dir = os.path.join(self.output_dir, base_url_netloc)
+                            if not os.path.exists(base_dir):
+                                os.makedirs(base_dir)
+                            filename = urllib.parse.quote_plus(url).replace("/", "_")
+                            filepath = os.path.join(base_dir, filename) + ".json"
+                            shutil.move(json_file, filepath)
+        logging.info(f"The output of the crawl can be found at: {self.output_dir}")
+
+    def to_metadata(self):
+        """
+        Save the metadata of the Crawl object to a file.
+        """
+        filename = f"{self.crawl_id}.json"
+        metadata = {
+            "crawl_id": self.crawl_id,
+            "n_workers": self.n_workers,
+            "base_url": self.base_url,
+            "max_pages": self.max_pages,
+            "visited_urls": list(self.visited_urls),
+            "ignored_urls": list(self.ignored_urls),
+            "render_js": self.render_js,
+            "queue": list(self.queue._queue),  # Convert asyncio.Queue to a list
+            "banned_urls": self.banned_urls,
+            "allowed_urls": self.allowed_urls,
+            "output_dir": self.output_dir,
+        }
+        with open(filename, "w") as file:
+            json.dump(metadata, file)
+
+    @staticmethod
+    def from_metadata(crawl_id):
+        """
+        Create a Crawl object from metadata stored in a file.
+
+        Args:
+            crawl_id (str): The ID of the crawl.
+
+        Returns:
+            Crawl: The Crawl object.
+        """
+        filename = f"{crawl_id}.json"
+        with open(filename, "r") as file:
+            metadata = json.load(file)
+        crawl = Crawl(
+            metadata["base_url"],
+            metadata["allowed_urls"],
+            metadata["banned_urls"],
+            metadata["n_workers"],
+            metadata["max_pages"],
+            render_js=metadata["render_js"],
+            output_dir=metadata["output_dir"],
+        )
+        crawl.crawl_id = metadata["crawl_id"]
+        crawl.visited_urls = set(metadata["visited_urls"])
+        crawl.ignored_urls = set(metadata["ignored_urls"])
+        crawl.queue = asyncio.Queue()
+        for url in metadata["queue"]:
+            crawl.queue.put_nowait(url)
+        return crawl
+
+    @staticmethod
+    def from_cloud(crawl_id, api_key=None):
+        """
+        Create a Crawl object from metadata stored in the cloud.
+
+        Args:
+            crawl_id (str): The ID of the crawl.
+            api_key (str, optional): The API key for accessing the cloud. Defaults to None.
+
+        Returns:
+            Crawl: The Crawl object.
+        """
+        get_json = {
+            "crawl_id": crawl_id,
+        }
+        out_json = run_webt_api(get_json, "v1/crawl/get-dev", api_key)
+        crawl = Crawl(
+            out_json["base_url"],
+            out_json["allowed_urls"],
+            out_json["banned_urls"],
+            max_pages=out_json["max_pages"],
+            render_js=out_json["render_js"],
+        )
+        crawl.crawl_id = out_json["crawl_id"]
+        return crawl
+
+    def status(self):
+        """
+        Get the status of the Crawl object.
+
+        Returns:
+            dict: The status of the Crawl object.
+        """
+        if not self.created:
+            return {
+                "crawl_id": self.crawl_id,
+                "n_workers": self.n_workers,
+                "base_url": self.base_url,
+                "max_pages": self.max_pages,
+                "num_visited": len(self.visited_urls),
+                "num_ignored": len(self.ignored_urls),
+                "num_queued": self.queue.qsize(),
+                "banned_urls": self.banned_urls,
+                "allowed_urls": self.allowed_urls,
+            }
+
+        status_json = {
+            "crawl_id": self.crawl_id,
+        }
+        crawl_status = run_webt_api(
+            status_json,
+            "v1/crawl/get-dev",
+            self.api_key,
+        )
+        return crawl_status
+
+    def __str__(self):
+        """
+        Get a string representation of the Crawl object.
+
+        Returns:
+            str: The string representation of the Crawl object.
+        """
+        status = self.status()
+        return (
+            f"WebTransposeCrawl(\n"
+            f"Crawl ID: {status['crawl_id']}\n"
+            f"Number of Workers: {status['n_workers'] if 'n_workers' in status else 'cloud'}\n"
+            f"Base URL: {status['base_url']}\n"
+            f"Max Pages: {status['max_pages']}\n"
+            f"Number of Visited URLs: {status['num_visited']}\n"
+            f"Number of Ignored URLs: {status['num_ignored']}\n"
+            f"Number of Queued URLs: {status['num_queued']}\n"
+            f"Banned URLs: {status['banned_urls']}\n"
+            f"Allowed URLs: {status['allowed_urls']}"
+            f")"
+        )
+
+    def __repr__(self):
+        """
+        Get a string representation of the Crawl object.
+
+        Returns:
+            str: The string representation of the Crawl object.
+        """
+        status = self.status()
+        return (
+            f"WebTransposeCrawl(\n"
+            f"Crawl ID: {status['crawl_id']}\n"
+            f"Number of Workers: {status['n_workers'] if 'n_workers' in status else 'cloud'}\n"
+            f"Base URL: {status['base_url']}\n"
+            f"Max Pages: {status['max_pages']}\n"
+            f"Number of Visited URLs: {status['num_visited']}\n"
+            f"Number of Ignored URLs: {status['num_ignored']}\n"
+            f"Number of Queued URLs: {status['num_queued']}\n"
+            f"Banned URLs: {status['banned_urls']}\n"
+            f"Allowed URLs: {status['allowed_urls']}"
+            f")"
+        )
+
+
+def get_crawl(crawl_id):
+    """
+    Get a Crawl object based on the crawl ID.
+
+    Args:
+        crawl_id (str): The ID of the crawl.
+
+    Returns:
+        Crawl: The Crawl object.
+    """
+    try:
+        return Crawl.from_metadata(crawl_id)
+    except FileNotFoundError:
+        return Crawl.from_cloud(crawl_id)
+
+
+def list_crawls(loc="cloud", api_key=None):
+    """
+    List all available crawls.
+
+    Args:
+        loc (str, optional): The location of the crawls. Defaults to 'cloud'.
+        api_key (str, optional): The API key. Defaults to None.
+
+    Returns:
+        list: A list of Crawl objects.
+    """
+    if loc == "cloud" and os.environ["WEBTRANSPOSE_API_KEY"] is not None:
+        crawl_list_data = run_webt_api(
+            {},
+            "v1/crawl/list-dev",
+            api_key,
+        )
+        return crawl_list_data["crawls"]
+    elif loc == "local" or os.environ["WEBTRANSPOSE_API_KEY"] is None:
+        crawls = []
+        for filename in os.listdir("."):
+            if filename.endswith(".json"):
+                crawls.append(Crawl.from_metadata(filename[:-5]))
+        return crawls
