@@ -5,3 +5,5 @@ __email__ = "mike@webtranspose.com"
 __version__ = "0.1.0"
 
 from .crawl import *
+from .openai import *
+from .scrape import *

@@ -7,7 +7,23 @@ from .consts import WEBTRANSPOSE_API_URL
 
 
 def run_webt_api(params, api_path, api_key=None):
-    headers = {"X-API-Key": os.environ["WEBTRANSPOSE_API_KEY"] if api_key is None else api_key}
+    """
+    Run a WebTranspose API request.
+
+    Args:
+        params (dict): The parameters for the API request.
+        api_path (str): The API path.
+        api_key (str, optional): The API key. Defaults to None.
+
+    Returns:
+        dict: The JSON response from the API.
+
+    Raises:
+        Exception: If the API request fails with a non-200 status code.
+    """
+    if api_key is None:
+        api_key = os.environ.get("WEBTRANSPOSE_API_KEY")
+    headers = {"X-API-Key": api_key}
     api_endpoint = urljoin(WEBTRANSPOSE_API_URL, api_path)
     response = requests.post(api_endpoint, headers=headers, json=params)
     if response.status_code == 200:
