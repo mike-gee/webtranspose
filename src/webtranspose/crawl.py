@@ -9,7 +9,7 @@ import uuid
 import zipfile
 from datetime import datetime
 from fnmatch import fnmatch
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urljoin, urlparse, urlunparse
 
 import httpx
 from bs4 import BeautifulSoup
@@ -29,6 +29,7 @@ class Crawl:
         output_dir="webtranspose-out",
         verbose=False,
         api_key=None,
+        _created=False,
     ):
         """
         Initialize the Crawl object.
@@ -44,8 +45,8 @@ class Crawl:
         :param api_key: The API key to use for webt_api calls.
         """
         self.api_key = api_key
-        if self.api_key is None and "WEBTRANSPOSE_API_KEY" in os.environ:
-            self.api_key = os.environ["WEBTRANSPOSE_API_KEY"]
+        if self.api_key is None:
+            self.api_key = os.environ.get("WEBTRANSPOSE_API_KEY")
 
         self.base_url = url
         self.allowed_urls = allowed_urls
@@ -64,7 +65,7 @@ class Crawl:
         self.n_workers = n_workers
         if not os.path.exists(self.output_dir):
             os.makedirs(self.output_dir)
-        self.created = False
+        self.created = _created
         self.render_js = render_js
         self.crawl_id = None
         if self.api_key is None:
@@ -83,6 +84,7 @@ class Crawl:
         base_url,
         max_pages,
         leftover_queue,
+        ignored_queue,
         verbose,
     ):
         """
@@ -98,8 +100,21 @@ class Crawl:
         :param base_url: The base URL of the crawl.
         :param max_pages: The maximum number of pages to crawl.
         :param leftover_queue: The queue for leftover URLs.
+        :param ignored_queue: The queue for ignored URLs.
         :param verbose: Whether to print verbose logging messages.
         """
+
+        def _lint_url(url):
+            """
+            Lint the given URL by removing the fragment component.
+
+            :param url: The URL to lint.
+            :return: The linted URL.
+            """
+            parsed_url = urlparse(url)
+            cleaned_url = parsed_url._replace(fragment="")
+            return urlunparse(cleaned_url)
+
         if verbose:
             logging.info(f"{name}: Starting crawl of {base_url}")
         while max_pages is None or len(visited_urls) < max_pages or not queue.empty():
@@ -125,27 +140,46 @@ class Crawl:
                 filepath = os.path.join(base_dir, filename) + ".json"
                 async with httpx.AsyncClient() as client:
                     page = await client.get(curr_url)
-                    soup = BeautifulSoup(page.content, "lxml")
-                    for link in soup.find_all("a"):
-                        url = link.get("href")
-                        if url:
-                            joined_url = urljoin(base_url, url)
-                            if joined_url.startswith("http"):
+                    page_title = None
+                    page_html = None
+                    page_text = None
+                    try:
+                        page_type = "html"
+                        soup = BeautifulSoup(page.content, "lxml")
+                        page_title = soup.title.string if soup.title else ""
+                        page_html = page.content.decode("utf-8")
+                        page_text = soup.get_text()
+                        child_urls = list(
+                            set(
+                                [
+                                    _lint_url(urljoin(base_url, link.get("href")))
+                                    for link in soup.find_all(href=True)
+                                ]
+                            )
+                        )
+                        for url in child_urls:
+                            if url.startswith("http"):
                                 queue.put_nowait(
                                     {
-                                        "url": joined_url,
+                                        "url": url,
                                         "parent_urls": parent_urls + [curr_url],
                                     }
                                 )
+                    except:
+                        child_urls = []
+                        page_type = "other"
+
                     visited_urls[curr_url] = filepath
                     data = {
                         "crawl_id": crawl_id,
                         "url": curr_url,
+                        "type": page_type,
+                        "title": page_title,
                         "date": datetime.now().isoformat(),
                         "parent_urls": parent_urls,
-                        "html": str(soup),
-                        "text": soup.get_text(),
-                        "title": soup.title.string if soup.title else "",
+                        "child_urls": child_urls,
+                        "html": page_html,
+                        "text": page_text,
                     }
                     with open(filepath, "w") as f:
                         json.dump(data, f)
@@ -160,6 +194,10 @@ class Crawl:
                         "parent_urls": parent_urls,
                     }
                 )
+
+            else:
+                ignored_queue.put_nowait(curr_url)
+
             queue.task_done()
 
     async def create_crawl_api(self):
@@ -187,6 +225,7 @@ class Crawl:
         """
         if self.api_key is None:
             leftover_queue = asyncio.Queue()
+            ignored_queue = asyncio.Queue()
             tasks = []
             for i in range(self.n_workers):
                 task = asyncio.create_task(
@@ -201,6 +240,7 @@ class Crawl:
                         self.base_url,
                         self.max_pages,
                         leftover_queue,
+                        ignored_queue,
                         self.verbose,
                     )
                 )
@@ -211,6 +251,7 @@ class Crawl:
                 task.cancel()
             await asyncio.gather(*tasks, return_exceptions=True)
             self.queue = leftover_queue
+            self.ignored_urls = list(ignored_queue._queue)
             self.to_metadata()
         else:
             if not self.created:
@@ -469,35 +510,37 @@ class Crawl:
         """
         Save the metadata of the Crawl object to a file.
         """
-        filename = f"{self.crawl_id}.json"
-        metadata = {
-            "crawl_id": self.crawl_id,
-            "n_workers": self.n_workers,
-            "base_url": self.base_url,
-            "max_pages": self.max_pages,
-            "visited_urls": list(self.visited_urls),
-            "ignored_urls": list(self.ignored_urls),
-            "render_js": self.render_js,
-            "queue": list(self.queue._queue),  # Convert asyncio.Queue to a list
-            "banned_urls": self.banned_urls,
-            "allowed_urls": self.allowed_urls,
-            "output_dir": self.output_dir,
-        }
-        with open(filename, "w") as file:
-            json.dump(metadata, file)
+        if not self.created:
+            filename = os.path.join(self.output_dir, f"{self.crawl_id}.json")
+            metadata = {
+                "crawl_id": self.crawl_id,
+                "n_workers": self.n_workers,
+                "base_url": self.base_url,
+                "max_pages": self.max_pages,
+                "visited_urls": self.visited_urls,
+                "ignored_urls": list(self.ignored_urls),
+                "render_js": self.render_js,
+                "queue": list(self.queue._queue),
+                "banned_urls": self.banned_urls,
+                "allowed_urls": self.allowed_urls,
+                "output_dir": self.output_dir,
+            }
+            with open(filename, "w") as file:
+                json.dump(metadata, file)
 
     @staticmethod
-    def from_metadata(crawl_id):
+    def from_metadata(crawl_id, output_dir="webtranspose-out"):
         """
         Create a Crawl object from metadata stored in a file.
 
         Args:
             crawl_id (str): The ID of the crawl.
+            output_dir (str, optional): The directory to store the crawled data. Defaults to "webtranspose-out".
 
         Returns:
             Crawl: The Crawl object.
         """
-        filename = f"{crawl_id}.json"
+        filename = os.path.join(output_dir, f"{crawl_id}.json")
         with open(filename, "r") as file:
             metadata = json.load(file)
         crawl = Crawl(
@@ -510,7 +553,7 @@ class Crawl:
             output_dir=metadata["output_dir"],
         )
         crawl.crawl_id = metadata["crawl_id"]
-        crawl.visited_urls = set(metadata["visited_urls"])
+        crawl.visited_urls = metadata["visited_urls"]
         crawl.ignored_urls = set(metadata["ignored_urls"])
         crawl.queue = asyncio.Queue()
         for url in metadata["queue"]:
@@ -529,19 +572,29 @@ class Crawl:
         Returns:
             Crawl: The Crawl object.
         """
-        get_json = {
-            "crawl_id": crawl_id,
-        }
-        out_json = run_webt_api(get_json, "v1/crawl/get-dev", api_key)
-        crawl = Crawl(
-            out_json["base_url"],
-            out_json["allowed_urls"],
-            out_json["banned_urls"],
-            max_pages=out_json["max_pages"],
-            render_js=out_json["render_js"],
+        if api_key is None:
+            api_key = os.environ.get("WEBTRANSPOSE_API_KEY")
+
+        if api_key is not None:
+            get_json = {
+                "crawl_id": crawl_id,
+            }
+            out_json = run_webt_api(get_json, "v1/crawl/get-dev", api_key)
+            crawl = Crawl(
+                out_json["base_url"],
+                out_json["allowed_urls"],
+                out_json["banned_urls"],
+                max_pages=out_json["max_pages"],
+                render_js=out_json["render_js"],
+                api_key=api_key,
+                _created=True,
+            )
+            crawl.crawl_id = out_json["crawl_id"]
+            return crawl
+
+        raise ValueError(
+            "API key not found. Please set WEBTRANSPOSE_API_KEY environment variable or pass api_key argument."
         )
-        crawl.crawl_id = out_json["crawl_id"]
-        return crawl
 
     def status(self):
         """
@@ -617,8 +670,72 @@ class Crawl:
             f")"
         )
 
+    def get_page(self, url):
+        """
+        Get the page data for a given URL.
 
-def get_crawl(crawl_id):
+        Args:
+            url (str): The URL of the page.
+
+        Returns:
+            dict: The page data.
+        """
+        if not self.created:
+            fn = self.visited_urls[url]
+            try:
+                with open(fn, "r") as f:
+                    data = json.load(f)
+                    return data
+            except:
+                logging.error(f"Could not find HTML for URL {url}")
+        else:
+            get_json = {
+                "crawl_id": self.crawl_id,
+                "url": url,
+            }
+            out_json = run_webt_api(
+                get_json,
+                "v1/crawl/get-page-dev",
+                self.api_key,
+            )
+            return out_json
+
+    def get_child_urls(self, url):
+        """
+        Get the child URLs for a given URL.
+
+        Args:
+            url (str): The URL.
+
+        Returns:
+            list: A list of child URLs.
+        """
+        if not self.created:
+            try:
+                fn = self.visited_urls[url]
+            except:
+                logging.error(f"Could not find child URLs for URL {url}")
+                return None
+            try:
+                with open(fn, "r") as f:
+                    data = json.load(f)
+                    return data["child_urls"]
+            except:
+                logging.error(f"Could not find child URLs for URL {url}")
+        else:
+            get_json = {
+                "crawl_id": self.crawl_id,
+                "url": url,
+            }
+            out_json = run_webt_api(
+                get_json,
+                "v1/crawl/get-child-urls-dev",
+                self.api_key,
+            )
+            return out_json
+
+
+def get_crawl(crawl_id, api_key=None):
     """
     Get a Crawl object based on the crawl ID.
 
@@ -631,7 +748,7 @@ def get_crawl(crawl_id):
     try:
         return Crawl.from_metadata(crawl_id)
     except FileNotFoundError:
-        return Crawl.from_cloud(crawl_id)
+        return Crawl.from_cloud(crawl_id, api_key=api_key)
 
 
 def list_crawls(loc="cloud", api_key=None):
@@ -645,14 +762,18 @@ def list_crawls(loc="cloud", api_key=None):
     Returns:
         list: A list of Crawl objects.
     """
-    if loc == "cloud" and os.environ["WEBTRANSPOSE_API_KEY"] is not None:
+    if api_key is None:
+        api_key = os.environ.get("WEBTRANSPOSE_API_KEY")
+
+    if api_key is not None and loc == "cloud":
         crawl_list_data = run_webt_api(
             {},
             "v1/crawl/list-dev",
             api_key,
         )
         return crawl_list_data["crawls"]
-    elif loc == "local" or os.environ["WEBTRANSPOSE_API_KEY"] is None:
+
+    elif loc == "local" or api_key is None:
         crawls = []
         for filename in os.listdir("."):
             if filename.endswith(".json"):
