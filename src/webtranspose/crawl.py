@@ -213,7 +213,7 @@ class Crawl:
         }
         out_json = run_webt_api(
             create_json,
-            "v1/crawl/create-dev",
+            "v1/crawl/create",
             self.api_key,
         )
         self.crawl_id = out_json["crawl_id"]
@@ -261,7 +261,7 @@ class Crawl:
             }
             run_webt_api(
                 crawl_json,
-                "v1/crawl/resume-dev",
+                "v1/crawl/resume",
                 self.api_key,
             )
         return self
@@ -296,7 +296,7 @@ class Crawl:
             }
             out_json = run_webt_api(
                 queue_json,
-                "v1/crawl/get-queue-dev",
+                "v1/crawl/get-queue",
                 self.api_key,
             )
             return out_json["urls"]
@@ -311,8 +311,8 @@ class Crawl:
         Returns:
             self: The Crawl object.
         """
+        self.allowed_urls = allowed_urls
         if not self.created:
-            self.allowed_urls = allowed_urls
             self.to_metadata()
         else:
             update_json = {
@@ -321,32 +321,32 @@ class Crawl:
             }
             run_webt_api(
                 update_json,
-                "v1/crawl/set-allowed-dev",
+                "v1/crawl/set-allowed",
                 self.api_key,
             )
         return self
 
-    def set_ignored_urls(self, ignored_urls):
+    def set_banned_urls(self, banned_urls):
         """
-        Set the ignored URLs for the crawl.
+        Set the banned URLs for the crawl.
 
         Args:
-            ignored_urls (list): A list of ignored URLs.
+            banned_urls (list): A list of ignored URLs.
 
         Returns:
             self: The Crawl object.
         """
+        self.banned_urls = banned_urls 
         if not self.created:
-            self.ignored_urls = ignored_urls
             self.to_metadata()
         else:
             update_json = {
                 "crawl_id": self.crawl_id,
-                "ignored_urls": ignored_urls,
+                "banned_urls": banned_urls,
             }
             run_webt_api(
                 update_json,
-                "v1/crawl/set-ignored-dev",
+                "v1/crawl/set-banned",
                 self.api_key,
             )
         return self
@@ -389,7 +389,7 @@ class Crawl:
             }
             run_webt_api(
                 max_pages_json,
-                "v1/crawl/set-max-pages-dev",
+                "v1/crawl/set-max-pages",
                 self.api_key,
             )
         return self
@@ -421,7 +421,7 @@ class Crawl:
         }
         crawl_status = run_webt_api(
             status_json,
-            "v1/crawl/get-dev",
+            "v1/crawl/get",
             self.api_key,
         )
         crawl_status["loc"] = "cloud"
@@ -442,27 +442,27 @@ class Crawl:
         }
         out_json = run_webt_api(
             visited_json,
-            "v1/crawl/get-dev/visited",
+            "v1/crawl/get/visited",
             self.api_key,
         )
         return out_json["pages"]
 
-    def get_ignored(self):
+    def get_banned(self):
         """
-        Get a list of ignored URLs.
+        Get a list of banned URLs.
 
         Returns:
-            list: A list of ignored URLs.
+            list: A list of banned URLs.
         """
         if not self.created:
-            return list(self.ignored_urls)
+            return list(self.banned_urls)
 
-        ignored_json = {
+        banned_json = {
             "crawl_id": self.crawl_id,
         }
         out_json = run_webt_api(
-            ignored_json,
-            "v1/crawl/get-dev/ignored",
+            banned_json,
+            "v1/crawl/get/banned",
             self.api_key,
         )
         return out_json["pages"]
@@ -477,7 +477,7 @@ class Crawl:
             }
             out_json = run_webt_api(
                 download_json,
-                "v1/crawl/download-dev",
+                "v1/crawl/download",
                 self.api_key,
             )
             presigned_url = out_json["url"]
@@ -579,7 +579,7 @@ class Crawl:
             get_json = {
                 "crawl_id": crawl_id,
             }
-            out_json = run_webt_api(get_json, "v1/crawl/get-dev", api_key)
+            out_json = run_webt_api(get_json, "v1/crawl/get", api_key)
             crawl = Crawl(
                 out_json["base_url"],
                 out_json["allowed_urls"],
@@ -621,7 +621,7 @@ class Crawl:
         }
         crawl_status = run_webt_api(
             status_json,
-            "v1/crawl/get-dev",
+            "v1/crawl/get",
             self.api_key,
         )
         return crawl_status
@@ -695,7 +695,7 @@ class Crawl:
             }
             out_json = run_webt_api(
                 get_json,
-                "v1/crawl/get-page-dev",
+                "v1/crawl/get-page",
                 self.api_key,
             )
             return out_json
@@ -729,7 +729,7 @@ class Crawl:
             }
             out_json = run_webt_api(
                 get_json,
-                "v1/crawl/get-child-urls-dev",
+                "v1/crawl/get-child-urls",
                 self.api_key,
             )
             return out_json
@@ -768,7 +768,7 @@ def list_crawls(loc="cloud", api_key=None):
     if api_key is not None and loc == "cloud":
         crawl_list_data = run_webt_api(
             {},
-            "v1/crawl/list-dev",
+            "v1/crawl/list",
             api_key,
         )
         return crawl_list_data["crawls"]
