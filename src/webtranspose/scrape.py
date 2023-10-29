@@ -173,7 +173,7 @@ def get_scraper(scraper_id, api_key=None):
             name=scraper["name"],
             schema=scraper["schema"],
             render_js=scraper["render_js"],
-            verbose=scraper["verbose"],
+            api_key=api_key,
             _created=True,
         )
 
