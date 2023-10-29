@@ -219,6 +219,26 @@ class Crawl:
         self.crawl_id = out_json["crawl_id"]
         self.created = True
 
+    async def queue_crawl(self):
+        """
+        Resume crawling of Crawl object. Don't wait for it to finish crawling.
+        """
+        if self.api_key is None:
+            logging.error("Cannot queue a local crawl. Please use the crawl() method.")
+
+        else:
+            if not self.created:
+                await self.create_crawl_api()
+            queue_json = {
+                "crawl_id": self.crawl_id,
+            }
+            run_webt_api(
+                queue_json,
+                "v1/crawl/resume",
+                self.api_key,
+            )
+
+
     async def crawl(self):
         """
         Resume crawling of Crawl object.
@@ -254,16 +274,11 @@ class Crawl:
             self.ignored_urls = list(ignored_queue._queue)
             self.to_metadata()
         else:
-            if not self.created:
-                await self.create_crawl_api()
-            crawl_json = {
-                "crawl_id": self.crawl_id,
-            }
-            run_webt_api(
-                crawl_json,
-                "v1/crawl/resume",
-                self.api_key,
-            )
+            await self.queue_crawl()
+            status = self.status()
+            while status['num_queued'] > 0 and status['num_visited'] < status['max_pages']:
+                await asyncio.sleep(5)
+                status = self.status()
         return self
 
     def get_queue(self, n=10):
@@ -331,7 +346,7 @@ class Crawl:
         Set the banned URLs for the crawl.
 
         Args:
-            banned_urls (list): A list of ignored URLs.
+            banned_urls (list): A list of banned URLs.
 
         Returns:
             self: The Crawl object.
@@ -426,6 +441,26 @@ class Crawl:
         )
         crawl_status["loc"] = "cloud"
         return crawl_status
+    
+    def get_ignored(self):
+        """
+        Get a list of ignored URLs.
+
+        Returns:
+            list: A list of ignored URLs.
+        """
+        if not self.created:
+            return list(self.ignored_urls)
+
+        ignored_json = {
+            "crawl_id": self.crawl_id,
+        }
+        out_json = run_webt_api(
+            ignored_json,
+            "v1/crawl/get/ignored",
+            self.api_key,
+        )
+        return out_json["pages"]
 
     def get_visited(self):
         """
