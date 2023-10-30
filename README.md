@@ -1,42 +1,96 @@
+<a href="https://webtranspose.com">
+  <img alt="Web Transpose. Simple APIs to get data from the internet." src="img/web-transpose-cover.png" width="100%" />
+  <h1 align="center">Web Transpose</h1>
+  <p align="center"><b>
+    Web Crawler & AI Web Scraper APIs for building new web experiences.
+  </b></p>
+</a>
 
-# Web Transpose
+```bash
+pip install webtranspose
+```
 
-
-<div align="center">
-
-[![PyPI - Version](https://img.shields.io/pypi/v/webtranspose.svg)](https://pypi.python.org/pypi/webtranspose)
-[![PyPI - Python Version](https://img.shields.io/pypi/pyversions/webtranspose.svg)](https://pypi.python.org/pypi/webtranspose)
-[![Tests](https://github.com/mike-gee/webtranspose/workflows/tests/badge.svg)](https://github.com/mike-gee/webtranspose/actions?workflow=tests)
-[![Codecov](https://codecov.io/gh/mike-gee/webtranspose/branch/main/graph/badge.svg)](https://codecov.io/gh/mike-gee/webtranspose)
-[![Read the Docs](https://readthedocs.org/projects/webtranspose/badge/)](https://webtranspose.readthedocs.io/)
-[![PyPI - License](https://img.shields.io/pypi/l/webtranspose.svg)](https://pypi.python.org/pypi/webtranspose)
-
-[![Black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
-[![pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit&logoColor=white)](https://github.com/pre-commit/pre-commit)
-[![Contributor Covenant](https://img.shields.io/badge/Contributor%20Covenant-2.0-4baaaa.svg)](https://www.contributor-covenant.org/version/2/0/code_of_conduct/)
-
-</div>
-
-
-Web Scraping made easy.
-
-
-* GitHub repo: <https://github.com/mike-gee/webtranspose.git>
-* Documentation: <https://webtranspose.readthedocs.io>
-* Free software: BSD
+<h4 align="center">
+  <a href="https://twitter.com/mikegeecmu">
+    <img src="https://img.shields.io/twitter/follow/mikegeecmu?style=flat&label=%40mikegeecmu&logo=twitter&color=0bf&logoColor=fff" alt="X" />
+  </a>
+  <a href="https://github.com/mikegeecmu/webtranspose/blob/main/LICENSE">
+    <img src="https://img.shields.io/github/license/mike-gee/webtranspose?label=license&logo=github&color=f80&logoColor=fff" alt="License" />
+  </a>
+  <a href="https://github.com/mikegeecmu/webtranspose/blob/main/LICENSE">
+    <img src="https://img.shields.io/badge/docs-Web%20Transpose-blue" alt="License" />
+  </a>
+</h4>
 
 
-## Features
+<p align="center">
+  <a href="#introduction"><strong>Introduction</strong></a> ·
+  <a href="#installation"><strong>Installation</strong></a> ·
+  <a href="https://docs.webtranspose.com"><strong>Docs</strong></a>
+</p>
+<br/>
 
-* TODO
+## Introduction
 
-## Quickstart
+In the near future, **nobody will open websites**. Instead, we will be directly served the information we are seeking. New web experiences will combine the information from many websites into a single, unified experience.
 
-TODO
+**Web Transpose** is a collection of API tools that allow building these new web experiences simple.
 
-## Credits
+- [Webᵀ Crawl: Distributed Web Crawler](#crawl)
+- [Webᵀ Scrape: AI Web Scraper](#scrape)
 
-This package was created with [Cookiecutter][cookiecutter] and the [fedejaure/cookiecutter-modern-pypackage][cookiecutter-modern-pypackage] project template.
 
-[cookiecutter]: https://github.com/cookiecutter/cookiecutter
-[cookiecutter-modern-pypackage]: https://github.com/fedejaure/cookiecutter-modern-pypackage
+### Crawl
+
+```python
+import webtranspose as webt
+
+crawl = webt.Crawl(
+    "https://www.example.com",
+    max_pages=100,
+    render_js=True,
+)
+await crawl.crawl() # crawl.queue_crawl() for async
+```
+
+## Scrape
+
+```python
+import webtranspose as webt
+
+schema = {
+    "Merchant Name": "string",
+    "Title of Product": "string",
+    "Product Photo URL": "string",
+}
+
+scraper = webt.Scraper(
+    schema, 
+    render_js=True, 
+    api_key="YOUR_WEBTRANSPOSE_API_KEY"
+)
+out_json = scraper.scrape("https://www.example.com")
+```
+
+
+## Installation
+
+Non-Python Users: [📄 API Docs](https://docs.webtranspose.com).
+
+This repo contains a local **lite** installation of Web Transpose. This is a good option if you want to run Web Transpose locally on your machine for quick use cases. 
+
+```shell
+pip install webtranspose[lite]
+```
+
+However, if you wish to leverage the full tools of Web Transpose and use in production, you should install the **full** version.
+
+```shell
+pip install webtranspose
+```
+
+## Enterprise Support
+
+Web Transpose serves enterprises small and large. We partner with copmanies for the long term with hands-on support and custom solutions.
+
+Please email me directly at mike@webtranspose.com for enquires.
