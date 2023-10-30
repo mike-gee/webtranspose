@@ -9,6 +9,7 @@ import uuid
 import zipfile
 from datetime import datetime
 from fnmatch import fnmatch
+from typing import Dict, List, Optional
 from urllib.parse import urljoin, urlparse, urlunparse
 
 import httpx
@@ -20,17 +21,17 @@ from .webt_api import run_webt_api
 class Crawl:
     def __init__(
         self,
-        url,
-        allowed_urls=[],
-        banned_urls=[],
-        n_workers=1,
-        max_pages=15,
-        render_js=False,
-        output_dir="webtranspose-out",
-        verbose=False,
-        api_key=None,
-        _created=False,
-    ):
+        url: str,
+        allowed_urls: List[str] = [],
+        banned_urls: List[str] = [],
+        n_workers: int = 1,
+        max_pages: int = 15,
+        render_js: bool = False,
+        output_dir: str = "webtranspose-out",
+        verbose: bool = False,
+        api_key: Optional[str] = None,
+        _created: bool = False,
+    ) -> None:
         """
         Initialize the Crawl object.
 
@@ -74,19 +75,19 @@ class Crawl:
 
     @staticmethod
     async def crawl_worker(
-        name,
-        queue,
-        crawl_id,
-        visited_urls,
-        allowed_urls,
-        banned_urls,
-        output_dir,
-        base_url,
-        max_pages,
-        leftover_queue,
-        ignored_queue,
-        verbose,
-    ):
+        name: str,
+        queue: asyncio.Queue,
+        crawl_id: str,
+        visited_urls: Dict[str, str],
+        allowed_urls: List[str],
+        banned_urls: List[str],
+        output_dir: str,
+        base_url: str,
+        max_pages: int,
+        leftover_queue: asyncio.Queue,
+        ignored_queue: asyncio.Queue,
+        verbose: bool,
+    ) -> None:
         """
         Worker function for crawling URLs.
 
@@ -104,7 +105,7 @@ class Crawl:
         :param verbose: Whether to print verbose logging messages.
         """
 
-        def _lint_url(url):
+        def _lint_url(url: str) -> str:
             """
             Lint the given URL by removing the fragment component.
 
@@ -200,7 +201,7 @@ class Crawl:
 
             queue.task_done()
 
-    async def create_crawl_api(self):
+    def create_crawl_api(self):
         """
         Creates a Crawl on https://webtranspose.com
         """
@@ -219,7 +220,7 @@ class Crawl:
         self.crawl_id = out_json["crawl_id"]
         self.created = True
 
-    async def queue_crawl(self):
+    def queue_crawl(self):
         """
         Resume crawling of Crawl object. Don't wait for it to finish crawling.
         """
@@ -228,21 +229,23 @@ class Crawl:
 
         else:
             if not self.created:
-                await self.create_crawl_api()
+                self.create_crawl_api()
             queue_json = {
                 "crawl_id": self.crawl_id,
             }
-            run_webt_api(
+            out = run_webt_api(
                 queue_json,
                 "v1/crawl/resume",
                 self.api_key,
             )
-
+            print(out)
 
     async def crawl(self):
         """
         Resume crawling of Crawl object.
         """
+        if self.verbose:
+            logging.info(f"Starting crawl of {self.base_url}")
         if self.api_key is None:
             leftover_queue = asyncio.Queue()
             ignored_queue = asyncio.Queue()
@@ -274,14 +277,18 @@ class Crawl:
             self.ignored_urls = list(ignored_queue._queue)
             self.to_metadata()
         else:
-            await self.queue_crawl()
+            self.queue_crawl()
             status = self.status()
-            while status['num_queued'] > 0 and status['num_visited'] < status['max_pages']:
+            while status["num_queued"] + status["num_visited"] + status["num_ignored"] == 0:
+                await asyncio.sleep(5)
+                status = self.status()
+
+            while status["num_queued"] > 0 and status["num_visited"] < status["max_pages"]:
                 await asyncio.sleep(5)
                 status = self.status()
         return self
 
-    def get_queue(self, n=10):
+    def get_queue(self, n: int = 10) -> list:
         """
         Get a list of URLs from the queue.
 
@@ -316,7 +323,7 @@ class Crawl:
             )
             return out_json["urls"]
 
-    def set_allowed_urls(self, allowed_urls):
+    def set_allowed_urls(self, allowed_urls: list) -> "Crawl":
         """
         Set the allowed URLs for the crawl.
 
@@ -341,7 +348,7 @@ class Crawl:
             )
         return self
 
-    def set_banned_urls(self, banned_urls):
+    def set_banned_urls(self, banned_urls: list) -> "Crawl":
         """
         Set the banned URLs for the crawl.
 
@@ -351,7 +358,7 @@ class Crawl:
         Returns:
             self: The Crawl object.
         """
-        self.banned_urls = banned_urls 
+        self.banned_urls = banned_urls
         if not self.created:
             self.to_metadata()
         else:
@@ -366,7 +373,7 @@ class Crawl:
             )
         return self
 
-    def get_filename(self, url):
+    def get_filename(self, url: str) -> str:
         """
         Get the filename associated with a visited URL.
 
@@ -384,7 +391,7 @@ class Crawl:
         except KeyError:
             raise ValueError(f"URL {url} not found in visited URLs")
 
-    def set_max_pages(self, max_pages):
+    def set_max_pages(self, max_pages: int) -> "Crawl":
         """
         Set the maximum number of pages to crawl.
 
@@ -409,7 +416,7 @@ class Crawl:
             )
         return self
 
-    def status(self):
+    def status(self) -> dict:
         """
         Get the status of the Crawl object.
 
@@ -441,8 +448,8 @@ class Crawl:
         )
         crawl_status["loc"] = "cloud"
         return crawl_status
-    
-    def get_ignored(self):
+
+    def get_ignored(self) -> list:
         """
         Get a list of ignored URLs.
 
@@ -462,7 +469,7 @@ class Crawl:
         )
         return out_json["pages"]
 
-    def get_visited(self):
+    def get_visited(self) -> list:
         """
         Get a list of visited URLs.
 
@@ -482,7 +489,7 @@ class Crawl:
         )
         return out_json["pages"]
 
-    def get_banned(self):
+    def get_banned(self) -> list:
         """
         Get a list of banned URLs.
 
@@ -539,9 +546,10 @@ class Crawl:
                             filename = urllib.parse.quote_plus(url).replace("/", "_")
                             filepath = os.path.join(base_dir, filename) + ".json"
                             shutil.move(json_file, filepath)
+
         logging.info(f"The output of the crawl can be found at: {self.output_dir}")
 
-    def to_metadata(self):
+    def to_metadata(self) -> None:
         """
         Save the metadata of the Crawl object to a file.
         """
@@ -564,7 +572,7 @@ class Crawl:
                 json.dump(metadata, file)
 
     @staticmethod
-    def from_metadata(crawl_id, output_dir="webtranspose-out"):
+    def from_metadata(crawl_id: str, output_dir: str = "webtranspose-out") -> "Crawl":
         """
         Create a Crawl object from metadata stored in a file.
 
@@ -596,7 +604,7 @@ class Crawl:
         return crawl
 
     @staticmethod
-    def from_cloud(crawl_id, api_key=None):
+    def from_cloud(crawl_id: str, api_key: Optional[str] = None) -> "Crawl":
         """
         Create a Crawl object from metadata stored in the cloud.
 
@@ -631,7 +639,7 @@ class Crawl:
             "API key not found. Please set WEBTRANSPOSE_API_KEY environment variable or pass api_key argument."
         )
 
-    def status(self):
+    def status(self) -> dict:
         """
         Get the status of the Crawl object.
 
@@ -661,7 +669,7 @@ class Crawl:
         )
         return crawl_status
 
-    def __str__(self):
+    def __str__(self) -> str:
         """
         Get a string representation of the Crawl object.
 
@@ -683,7 +691,7 @@ class Crawl:
             f")"
         )
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         """
         Get a string representation of the Crawl object.
 
@@ -705,7 +713,7 @@ class Crawl:
             f")"
         )
 
-    def get_page(self, url):
+    def get_page(self, url: str) -> dict:
         """
         Get the page data for a given URL.
 
@@ -735,7 +743,7 @@ class Crawl:
             )
             return out_json
 
-    def get_child_urls(self, url):
+    def get_child_urls(self, url: str) -> list:
         """
         Get the child URLs for a given URL.
 
@@ -770,12 +778,13 @@ class Crawl:
             return out_json
 
 
-def get_crawl(crawl_id, api_key=None):
+def get_crawl(crawl_id: str, api_key: Optional[str] = None) -> Crawl:
     """
     Get a Crawl object based on the crawl ID.
 
     Args:
         crawl_id (str): The ID of the crawl.
+        api_key (str, optional): The API key. Defaults to None.
 
     Returns:
         Crawl: The Crawl object.
@@ -786,7 +795,7 @@ def get_crawl(crawl_id, api_key=None):
         return Crawl.from_cloud(crawl_id, api_key=api_key)
 
 
-def list_crawls(loc="cloud", api_key=None):
+def list_crawls(loc: str = "cloud", api_key: Optional[str] = None) -> list:
     """
     List all available crawls.
 

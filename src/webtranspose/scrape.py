@@ -12,14 +12,14 @@ from .webt_api import run_webt_api
 class Scraper:
     def __init__(
         self,
-        schema,
-        scraper_id=None,
-        name=None,
-        render_js=False,
-        verbose=False,
-        scraper=None,
-        api_key=None,
-        _created=False,
+        schema: dict,
+        scraper_id: str = None,
+        name: str = None,
+        render_js: bool = False,
+        verbose: bool = False,
+        scraper: OpenAIScraper = None,
+        api_key: str = None,
+        _created: bool = False,
     ):
         """
         Initialize the Scraper object.
@@ -141,7 +141,7 @@ class Scraper:
             )
 
 
-def get_scraper(scraper_id, api_key=None):
+def get_scraper(scraper_id, api_key: str = None):
     """
     Get a Scraper object based on the scraper ID.
 
@@ -180,7 +180,7 @@ def get_scraper(scraper_id, api_key=None):
     raise ValueError("Must provide api_key or set WEBTRANSPOSE_API_KEY in environment variables.")
 
 
-def list_scrapers(api_key=None):
+def list_scrapers(api_key: str = None):
     """
     List all available scrapers.
 

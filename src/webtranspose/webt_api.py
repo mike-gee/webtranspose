@@ -3,10 +3,8 @@ from urllib.parse import urljoin
 
 import requests
 
-from .consts import WEBTRANSPOSE_API_URL
 
-
-def run_webt_api(params, api_path, api_key=None):
+def run_webt_api(params: dict, api_path: str, api_key: str = None) -> dict:
     """
     Run a WebTranspose API request.
 
@@ -21,11 +19,12 @@ def run_webt_api(params, api_path, api_key=None):
     Raises:
         Exception: If the API request fails with a non-200 status code.
     """
+    WEBTRANSPOSE_API_URL = "https://api.webtranspose.com/"
     if api_key is None:
         api_key = os.environ.get("WEBTRANSPOSE_API_KEY")
     headers = {"X-API-Key": api_key}
     api_endpoint = urljoin(WEBTRANSPOSE_API_URL, api_path)
-    response = requests.post(api_endpoint, headers=headers, json=params)
+    response = requests.post(api_endpoint, headers=headers, json=params, timeout=180)
     if response.status_code == 200:
         return response.json()
     else:

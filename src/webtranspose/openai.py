@@ -8,8 +8,8 @@ import tiktoken
 class OpenAIScraper:
     def __init__(
         self,
-        chunk_size=2500,
-        overlap_size=100,
+        chunk_size: int = 2500,
+        overlap_size: int = 100,
     ):
         """
         Initialize the OpenAIScraper.
@@ -24,7 +24,9 @@ class OpenAIScraper:
         self.overlap_size = overlap_size
 
     @staticmethod
-    def process_html(text, chunk_size, overlap_size, encoding):
+    def process_html(
+        text: str, chunk_size: int, overlap_size: int, encoding: tiktoken.Encoding
+    ) -> list:
         """
         Process the HTML text into chunks.
 
@@ -49,7 +51,7 @@ class OpenAIScraper:
         decoded_chunks = [encoding.decode(chunk) for chunk in chunks]
         return decoded_chunks
 
-    def scrape(self, html, schema):
+    def scrape(self, html: str, schema: dict) -> dict:
         """
         Scrape the HTML text using the provided schema.
 
@@ -106,7 +108,7 @@ class OpenAIScraper:
 
         return out_data
 
-    def transform_schema(self, schema):
+    def transform_schema(self, schema: dict) -> dict:
         """
         Transform the schema into the format required by OpenAI.
 
