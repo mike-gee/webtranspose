@@ -2,19 +2,19 @@
 [tool.poetry]
 name = "webtranspose"
 version = "0.1.0"
-description = "Web Scraping made easy."
+description = "APIs for the internet"
 authors = ["Mike Gee <mike@webtranspose.com>"]
 
 readme = "README.md"
 homepage = "https://github.com/mike-gee/webtranspose"
 repository = "https://github.com/mike-gee/webtranspose"
-documentation = "https://webtranspose.readthedocs.io"
+documentation = "https://docs.webtranspose.com"
 keywords = ["webtranspose"]
 classifiers=[
     "Development Status :: 2 - Pre-Alpha",
     "Intended Audience :: Developers",
     
-    "License :: OSI Approved :: BSD License",
+    "License :: AGPL License",
     
     "Natural Language :: English",
     "Programming Language :: Python :: 3",
