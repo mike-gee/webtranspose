@@ -127,7 +127,16 @@ class OpenAIScraper:
         properties = {}
         for key, value in schema.items():
             if isinstance(value, dict):
-                if "type" in value:
+                if "type" in value and value["type"] == "array":
+                    properties[key] = {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": self.transform_schema(value["items"]),
+                        },
+                        "required": list(value["items"].keys()),
+                    }
+                elif "type" in value:
                     properties[key] = value
                 else:
                     properties[key] = self.transform_schema(value)
@@ -145,4 +154,5 @@ class OpenAIScraper:
                     "type": value,
                     "description": key,
                 }
+
         return properties
