@@ -14,7 +14,7 @@ classifiers=[
     "Development Status :: 2 - Pre-Alpha",
     "Intended Audience :: Developers",
     
-    "License :: AGPL License",
+    "License :: OSI Approved :: GNU Affero General Public License v3.0 or later (AGPL-3.0-or-later)",
     
     "Natural Language :: English",
     "Programming Language :: Python :: 3",
