@@ -73,6 +73,12 @@ class Crawl:
             self.crawl_id = str(uuid.uuid4())
         self.verbose = verbose
 
+        api_key = os.environ.get("WEBTRANSPOSE_API_KEY")
+        if api_key is None and self.api_key is None:
+            logging.warning(
+                "No Web Transpose API provided. Lite version in use...\n\nTo run your Web Crawl on the Web Transpose API, set the WEBTRANSPOSE_API_KEY from https://webtranspose.com. Run cheaper with logging and advanced analytics."
+            )
+
     @staticmethod
     async def crawl_worker(
         name: str,
@@ -205,6 +211,8 @@ class Crawl:
         """
         Creates a Crawl on https://webtranspose.com
         """
+        if self.verbose:
+            logging.info(f"Creating crawl of {self.base_url} on Web Transpose...")
         create_json = {
             "url": self.base_url,
             "render_js": self.render_js,
@@ -224,6 +232,9 @@ class Crawl:
         """
         Resume crawling of Crawl object. Don't wait for it to finish crawling.
         """
+        if self.verbose:
+            logging.info(f"Starting crawl of {self.base_url} on Web Transpose...")
+
         if self.api_key is None:
             logging.error("Cannot queue a local crawl. Please use the crawl() method.")
 
@@ -244,7 +255,7 @@ class Crawl:
         Resume crawling of Crawl object.
         """
         if self.verbose:
-            logging.info(f"Starting crawl of {self.base_url}")
+            logging.info(f"Starting crawl of {self.base_url}...")
         if self.api_key is None:
             leftover_queue = asyncio.Queue()
             ignored_queue = asyncio.Queue()
@@ -299,7 +310,7 @@ class Crawl:
         """
         if self.api_key is None:
             urls = []
-            for _ in range(n):
+            for _ in range(max_pages):
                 try:
                     url = self.queue.get_nowait()
                     urls.append(url)
@@ -512,6 +523,9 @@ class Crawl:
         """
         Download the output of the crawl.
         """
+        if self.verbose:
+            logging.info(f"Downloading crawl of {self.base_url}...")
+
         if self.created:
             download_json = {
                 "crawl_id": self.crawl_id,

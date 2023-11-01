@@ -1,6 +1,7 @@
 import os
 import re
 import uuid
+import logging
 
 import requests
 from bs4 import BeautifulSoup
@@ -53,10 +54,19 @@ class Scraper:
             self.scraper_id = str(uuid.uuid4())
         self.created = _created
 
+        api_key = os.environ.get("WEBTRANSPOSE_API_KEY")
+        if api_key is None and self.api_key is None:
+            logging.warning(
+                "No Web Transpose API provided. Lite version in use...\n\nTo run the actual WebT AI Web Scraper the Web Transpose API, set the WEBTRANSPOSE_API_KEY from https://webtranspose.com. Run cheaper with logging and advanced analytics."
+            )
+
     def create_scraper_api(self):
         """
         Creates a Scraper on https://webtranspose.com
         """
+        if self.verbose:
+            logging.info(f"Creating AI Web Scraper on Web Transpose...")
+
         create_json = {
             "name": self.name,
             "schema": self.schema,
@@ -85,6 +95,9 @@ class Scraper:
         Raises:
             ValueError: If neither URL nor HTML is provided.
         """
+        if self.verbose:
+            logging.info(f"Running Scraper({self.name}) on {url}...")
+
         if self.api_key is None:
             if url is not None:
                 response = requests.get(url, timeout=timeout)
