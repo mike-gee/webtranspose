@@ -70,7 +70,6 @@ class OpenAIScraper:
             model = "gpt-3.5-turbo-0613"
             if len(self.encoding.encode(sub_html)) > 2500:
                 model = "gpt-3.5-turbo-16k"
-            print(model)
 
             response = openai.ChatCompletion.create(
                 model=model,
@@ -89,7 +88,6 @@ class OpenAIScraper:
                 ],
             )
             out = response["choices"][0]["message"]
-            print(out)
 
             if "function_call" in out:
                 args = json.loads(out["function_call"]["arguments"])

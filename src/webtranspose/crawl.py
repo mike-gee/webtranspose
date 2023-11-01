@@ -238,7 +238,6 @@ class Crawl:
                 "v1/crawl/resume",
                 self.api_key,
             )
-            print(out)
 
     async def crawl(self):
         """
@@ -288,12 +287,12 @@ class Crawl:
                 status = self.status()
         return self
 
-    def get_queue(self, n: int = 10) -> list:
+    def get_queued(self, max_pages: int = 30) -> list:
         """
         Get a list of URLs from the queue.
 
         Args:
-            n (int): The number of URLs to retrieve from the queue. Defaults to 10.
+            max_pages (int): The number of URLs to retrieve from the queue. Defaults to 30.
 
         Returns:
             list: A list of URLs from the queue.
@@ -314,7 +313,7 @@ class Crawl:
                 return [self.base_url]
             queue_json = {
                 "crawl_id": self.crawl_id,
-                "n": n,
+                "max_pages": max_pages,
             }
             out_json = run_webt_api(
                 queue_json,
