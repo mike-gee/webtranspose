@@ -1,7 +1,7 @@
+import logging
 import os
 import re
 import uuid
-import logging
 
 import requests
 from bs4 import BeautifulSoup
