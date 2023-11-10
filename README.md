@@ -91,6 +91,6 @@ pip install webtranspose
 
 ## Enterprise Support
 
-Web Transpose serves enterprises small and large. We partner with copmanies for the long term with hands-on support and custom solutions.
+Web Transpose serves enterprises small and large. We partner with companies for the long term with hands-on support and custom solutions.
 
-Please email me directly at mike@webtranspose.com for enquires.
+Please email me directly at mike@webtranspose.com for enquiries.
