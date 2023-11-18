@@ -80,14 +80,15 @@ Non-Python Users: [📄 API Docs](https://docs.webtranspose.com).
 This repo contains a local **lite** installation of Web Transpose. This is a good option if you want to run Web Transpose locally on your machine for quick use cases. 
 
 ```shell
-pip install webtranspose[lite]
-```
-
-However, if you wish to leverage the full tools of Web Transpose and use in production, you should install the **full** version.
-
-```shell
 pip install webtranspose
 ```
+
+However, if you wish to leverage the full tools of Web Transpose and use in production, you should add your API key to add the **full** version.
+
+```python
+os.environ["WEBTRANSPOSE_API_KEY"] = "YOUR_API_KEY_HERE"
+```
+
 
 ## Enterprise Support
 
