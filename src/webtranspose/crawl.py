@@ -9,7 +9,7 @@ import uuid
 import zipfile
 from datetime import datetime
 from fnmatch import fnmatch
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Set
 from urllib.parse import urljoin, urlparse, urlunparse
 
 import httpx
@@ -62,6 +62,7 @@ class Crawl:
         )
         self.output_dir = output_dir
         self.visited_urls = {}
+        self.failed_urls = set()
         self.ignored_urls = set()
         self.n_workers = n_workers
         if not os.path.exists(self.output_dir):
@@ -86,6 +87,7 @@ class Crawl:
         crawl_id: str,
         visited_urls: Dict[str, str],
         allowed_urls: List[str],
+        failed_urls: Set[str],
         banned_urls: List[str],
         output_dir: str,
         base_url: str,
@@ -146,7 +148,13 @@ class Crawl:
                 filename = urllib.parse.quote_plus(curr_url).replace("/", "_")
                 filepath = os.path.join(base_dir, filename) + ".json"
                 async with httpx.AsyncClient() as client:
-                    page = await client.get(curr_url)
+                    try:
+                        page = await client.get(curr_url)
+                    except:
+                        failed_urls.add(curr_url)
+                        queue.task_done()
+                        continue
+
                     page_title = None
                     page_html = None
                     page_text = None
@@ -268,6 +276,7 @@ class Crawl:
                         self.crawl_id,
                         self.visited_urls,
                         self.allowed_urls,
+                        self.failed_urls,
                         self.banned_urls,
                         self.output_dir,
                         self.base_url,
@@ -292,6 +301,11 @@ class Crawl:
             while status["num_queued"] + status["num_visited"] + status["num_ignored"] == 0:
                 await asyncio.sleep(5)
                 status = self.status()
+
+            if (status["num_failed"] > 0) and (
+                status["num_queued"] + status["num_visited"] + status["num_ignored"] == 0
+            ):
+                raise Exception("The first page crawled failed")
 
             while status["num_queued"] > 0 and status["num_visited"] < status["max_pages"]:
                 await asyncio.sleep(5)
@@ -441,6 +455,7 @@ class Crawl:
                 "max_pages": self.max_pages,
                 "num_visited": len(self.visited_urls),
                 "num_ignored": len(self.ignored_urls),
+                "num_failed": len(self.failed_urls),
                 "num_queued": self.queue.qsize(),
                 "banned_urls": self.banned_urls,
                 "allowed_urls": self.allowed_urls,
@@ -457,6 +472,8 @@ class Crawl:
             self.api_key,
         )
         crawl_status["loc"] = "cloud"
+        if self.verbose:
+            logging.info(f"Status of crawl {self.crawl_id}: {crawl_status}")
         return crawl_status
 
     def get_ignored(self) -> list:
@@ -475,6 +492,26 @@ class Crawl:
         out_json = run_webt_api(
             ignored_json,
             "v1/crawl/get/ignored",
+            self.api_key,
+        )
+        return out_json["pages"]
+
+    def get_failed(self) -> list:
+        """
+        Get a list of failed URLs.
+
+        Returns:
+            list: A list of failed URLs.
+        """
+        if not self.created:
+            return list(self.failed_urls)
+
+        visited_json = {
+            "crawl_id": self.crawl_id,
+        }
+        out_json = run_webt_api(
+            visited_json,
+            "v1/crawl/get/failed",
             self.api_key,
         )
         return out_json["pages"]
@@ -652,36 +689,6 @@ class Crawl:
             "API key not found. Please set WEBTRANSPOSE_API_KEY environment variable or pass api_key argument."
         )
 
-    def status(self) -> dict:
-        """
-        Get the status of the Crawl object.
-
-        Returns:
-            dict: The status of the Crawl object.
-        """
-        if not self.created:
-            return {
-                "crawl_id": self.crawl_id,
-                "n_workers": self.n_workers,
-                "base_url": self.base_url,
-                "max_pages": self.max_pages,
-                "num_visited": len(self.visited_urls),
-                "num_ignored": len(self.ignored_urls),
-                "num_queued": self.queue.qsize(),
-                "banned_urls": self.banned_urls,
-                "allowed_urls": self.allowed_urls,
-            }
-
-        status_json = {
-            "crawl_id": self.crawl_id,
-        }
-        crawl_status = run_webt_api(
-            status_json,
-            "v1/crawl/get",
-            self.api_key,
-        )
-        return crawl_status
-
     def __str__(self) -> str:
         """
         Get a string representation of the Crawl object.
@@ -692,15 +699,16 @@ class Crawl:
         status = self.status()
         return (
             f"WebTransposeCrawl(\n"
-            f"Crawl ID: {status['crawl_id']}\n"
-            f"Number of Workers: {status['n_workers'] if 'n_workers' in status else 'cloud'}\n"
-            f"Base URL: {status['base_url']}\n"
-            f"Max Pages: {status['max_pages']}\n"
-            f"Number of Visited URLs: {status['num_visited']}\n"
-            f"Number of Ignored URLs: {status['num_ignored']}\n"
-            f"Number of Queued URLs: {status['num_queued']}\n"
-            f"Banned URLs: {status['banned_urls']}\n"
-            f"Allowed URLs: {status['allowed_urls']}"
+            f"  Crawl ID: {status['crawl_id']}\n"
+            f"  Number of Workers: {status['n_workers'] if 'n_workers' in status else 'cloud'}\n"
+            f"  Base URL: {status['base_url']}\n"
+            f"  Max Pages: {status['max_pages']}\n"
+            f"  Number of Visited URLs: {status['num_visited']}\n"
+            f"  Number of Ignored URLs: {status['num_ignored']}\n"
+            f"  Number of Queued URLs: {status['num_queued']}\n"
+            f"  Number of Failed URLs: {status['num_failed']}\n"
+            f"  Banned URLs: {status['banned_urls']}\n"
+            f"  Allowed URLs: {status['allowed_urls']}"
             f")"
         )
 
@@ -714,15 +722,16 @@ class Crawl:
         status = self.status()
         return (
             f"WebTransposeCrawl(\n"
-            f"Crawl ID: {status['crawl_id']}\n"
-            f"Number of Workers: {status['n_workers'] if 'n_workers' in status else 'cloud'}\n"
-            f"Base URL: {status['base_url']}\n"
-            f"Max Pages: {status['max_pages']}\n"
-            f"Number of Visited URLs: {status['num_visited']}\n"
-            f"Number of Ignored URLs: {status['num_ignored']}\n"
-            f"Number of Queued URLs: {status['num_queued']}\n"
-            f"Banned URLs: {status['banned_urls']}\n"
-            f"Allowed URLs: {status['allowed_urls']}"
+            f"  Crawl ID: {status['crawl_id']}\n"
+            f"  Number of Workers: {status['n_workers'] if 'n_workers' in status else 'cloud'}\n"
+            f"  Base URL: {status['base_url']}\n"
+            f"  Max Pages: {status['max_pages']}\n"
+            f"  Number of Visited URLs: {status['num_visited']}\n"
+            f"  Number of Ignored URLs: {status['num_ignored']}\n"
+            f"  Number of Queued URLs: {status['num_queued']}\n"
+            f"  Number of Failed URLs: {status['num_failed']}\n"
+            f"  Banned URLs: {status['banned_urls']}\n"
+            f"  Allowed URLs: {status['allowed_urls']}"
             f")"
         )
 
@@ -790,6 +799,22 @@ class Crawl:
             )
             return out_json
 
+    def retry_failed_urls(self) -> None:
+        """
+        Queue failed URLs from a crawl.
+        """
+        if not self.created:
+            logging.error("Cannot retry failed URLs for un-created crawl.")
+        elif self.api_key is not None:
+            queue_json = {
+                "crawl_id": self.crawl_id,
+            }
+            run_webt_api(
+                queue_json,
+                "v1/crawl/retry-failed",
+                self.api_key,
+            )
+
 
 def get_crawl(crawl_id: str, api_key: Optional[str] = None) -> Crawl:
     """
@@ -836,3 +861,25 @@ def list_crawls(loc: str = "cloud", api_key: Optional[str] = None) -> list:
             if filename.endswith(".json"):
                 crawls.append(Crawl.from_metadata(filename[:-5]))
         return crawls
+
+
+def retry_failed(crawl_id: str, api_key: Optional[str] = None) -> None:
+    """
+    Queue failed URLs from a crawl.
+
+    Args:
+        crawl_id (str): The ID of the crawl.
+        api_key (str, optional): The API key. Defaults to None.
+    """
+    if api_key is None:
+        api_key = os.environ.get("WEBTRANSPOSE_API_KEY")
+
+    if api_key is not None:
+        queue_json = {
+            "crawl_id": crawl_id,
+        }
+        run_webt_api(
+            queue_json,
+            "v1/crawl/retry-failed",
+            api_key,
+        )

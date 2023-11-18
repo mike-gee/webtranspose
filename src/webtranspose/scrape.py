@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 import re
@@ -59,6 +60,42 @@ class Scraper:
             logging.warning(
                 "No Web Transpose API provided. Lite version in use...\n\nTo run the actual WebT AI Web Scraper the Web Transpose API, set the WEBTRANSPOSE_API_KEY from https://webtranspose.com. Run cheaper with logging and advanced analytics."
             )
+
+    def __str__(self) -> str:
+        """
+        Get a string representation of the Scraper object.
+
+        Returns:
+            str: The string representation of the Scraper object.
+        """
+        status = self.status()
+        schema = json.dumps(status["schema"], indent=4)
+        return (
+            f"WebTransposeScraper(\n"
+            f"  Status ID: {status['scraper_id']}\n"
+            f"  Name: {status['name']}\n"
+            f"  Render JS: {status['render_js']}\n"
+            f"  Schema: {schema}\n"
+            f")"
+        )
+
+    def __repr__(self) -> str:
+        """
+        Get a string representation of the Scraper object.
+
+        Returns:
+            str: The string representation of the Scraper object.
+        """
+        status = self.status()
+        schema = json.dumps(status["schema"], indent=4)
+        return (
+            f"WebTransposeScraper(\n"
+            f"  Status ID: {status['scraper_id']}\n"
+            f"  Name: {status['name']}\n"
+            f"  Render JS: {status['render_js']}\n"
+            f"  Schema: {schema}\n"
+            f")"
+        )
 
     def create_scraper_api(self):
         """
@@ -135,7 +172,7 @@ class Scraper:
         Returns:
             dict: The status of the Scraper.
         """
-        if self.api_key is None:
+        if self.api_key is None or not self.created:
             return {
                 "scraper_id": self.scraper_id,
                 "name": self.name,
@@ -147,11 +184,19 @@ class Scraper:
             get_json = {
                 "scraper_id": self.scraper_id,
             }
-            return run_webt_api(
+            out_api = run_webt_api(
                 get_json,
                 "/v1/scraper/get",
                 self.api_key,
             )
+            scraper = out_api["scraper"]
+            return {
+                "scraper_id": scraper["id"],
+                "name": scraper["name"],
+                "verbose": self.verbose,
+                "render_js": scraper["render_js"],
+                "schema": scraper["schema"],
+            }
 
 
 def get_scraper(scraper_id, api_key: str = None):
