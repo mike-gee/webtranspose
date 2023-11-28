@@ -164,3 +164,31 @@ class Chatbot:
             "crawl_id_list": crawl_id_list,
         }
         run_webt_api(query_json, "v1/chat/crawls/delete", self.api_key)
+
+
+def get_chatbot(chatbot_id: str, api_key = None) -> Chatbot:
+    """
+    Get a chatbot.
+
+    :param chatbot_id: The ID of the chatbot.
+    :return: The chatbot.
+    """
+    if api_key is None:
+        api_key = os.environ.get("WEBTRANSPOSE_API_KEY")
+        if api_key is None:
+            raise ValueError(
+                "No Web Transpose API provided. \n\nTo use Chatbots, set the WEBTRANSPOSE_API_KEY from https://webtranspose.com."
+            )
+    get_json = {
+        "chatbot_id": chatbot_id,
+    }
+    chat_json = run_webt_api(get_json, "v1/chat/get", api_key)
+    chatbot_data = chat_json.get('chatbot', {})
+    chatbot = Chatbot(
+        chatbot_id=chatbot_data.get('id'),
+        name=chatbot_data.get('name'),
+        max_pages=chatbot_data.get('num_run', 100),
+        verbose=False,
+        _created=True
+    )
+    return chatbot

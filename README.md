@@ -14,8 +14,8 @@ pip install webtranspose
   <a href="https://twitter.com/mikegeecmu">
     <img src="https://img.shields.io/twitter/follow/mikegeecmu?style=flat&label=%40mikegeecmu&logo=twitter&color=0bf&logoColor=fff" alt="X" />
   </a>
-  <a href="https://github.com/mikegeecmu/webtranspose/blob/main/LICENSE">
-    <img src="https://img.shields.io/github/license/mike-gee/webtranspose?label=license&logo=github&color=f80&logoColor=fff" alt="License" />
+  <a href="https://github.com/mike-gee/webtranspose/blob/master/LICENSE.rst">
+    <img src="https://img.shields.io/badge/LICENSE-GNU%20AGPLv3-blue" alt="License" />
   </a>
   <a href="https://github.com/mikegeecmu/webtranspose/blob/main/LICENSE">
     <img src="https://img.shields.io/badge/docs-Web%20Transpose-blue" alt="License" />
@@ -45,6 +45,9 @@ In the near future, **nobody will open websites**. Instead, we will be directly 
 ```python
 import webtranspose as webt
 
+import os
+os.environ['WEBTRANSPOSE_API_KEY'] = "YOUR WEBT API KEY"
+
 crawl = webt.Crawl(
     "https://www.example.com",
     max_pages=100,
@@ -58,6 +61,9 @@ await crawl.crawl() # crawl.queue_crawl() for async
 ```python
 import webtranspose as webt
 
+import os
+os.environ['WEBTRANSPOSE_API_KEY'] = "YOUR WEBT API KEY"
+
 schema = {
     "Merchant Name": "string",
     "Title of Product": "string",
@@ -67,9 +73,26 @@ schema = {
 scraper = webt.Scraper(
     schema, 
     render_js=True, 
-    api_key="YOUR_WEBTRANSPOSE_API_KEY"
 )
 out_json = scraper.scrape("https://www.example.com")
+```
+
+## Web Search (SERP API)
+
+```python
+import webtranspose as webt
+
+import os
+os.environ['WEBTRANSPOSE_API_KEY'] = "YOUR WEBT API KEY"
+
+results = webt.search("what caused the fourth great ninja war?")
+# results.keys()
+# ['results']
+
+# AI Filter
+results = webt.search_filter("Paul Graham's Blog")
+# results.keys()
+# ['results', 'filtered_results']
 ```
 
 
