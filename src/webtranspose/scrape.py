@@ -50,8 +50,7 @@ class Scraper:
         self.scraper_id = scraper_id
         if self.scraper is None:
             self.scraper = OpenAIScraper()
-        self.scraper_id = None
-        if self.api_key is None:
+        if self.scraper_id is None:
             self.scraper_id = str(uuid.uuid4())
         self.created = _created
 
