@@ -77,7 +77,7 @@ scraper = webt.Scraper(
 out_json = scraper.scrape("https://www.example.com")
 ```
 
-## Web Search (SERP API)
+## Web Search (AI SERP API)
 
 ```python
 import webtranspose as webt

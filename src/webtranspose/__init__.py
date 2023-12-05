@@ -2,7 +2,7 @@
 
 __author__ = """Mike Gee"""
 __email__ = "mike@webtranspose.com"
-__version__ = "0.3.0"
+__version__ = "0.3.1"
 
 from .chat import *
 from .crawl import *
