@@ -21,6 +21,7 @@ class Scraper:
         verbose: bool = False,
         scraper: OpenAIScraper = None,
         api_key: str = None,
+        proxy: str = None,
         _created: bool = False,
     ):
         """
@@ -34,6 +35,7 @@ class Scraper:
             verbose (bool, optional): Whether to print verbose output. Defaults to False.
             scraper (OpenAIScraper, optional): The scraper object. Defaults to None.
             api_key (str, optional): The API key. Defaults to None.
+            proxy (str, optional): The proxy. Defaults to None.
             _created (bool, optional): Whether the scraper has been created. Defaults to False.
         """
         self.api_key = api_key
@@ -48,6 +50,7 @@ class Scraper:
         self.scraper = scraper
         self.render_js = render_js
         self.scraper_id = scraper_id
+        self.proxy = proxy
         if self.scraper is None:
             self.scraper = OpenAIScraper()
         if self.scraper_id is None:
@@ -107,6 +110,7 @@ class Scraper:
             "name": self.name,
             "schema": self.schema,
             "render_js": self.render_js,
+            "proxy": self.proxy,
         }
         out_json = run_webt_api(
             create_json,
@@ -156,6 +160,7 @@ class Scraper:
                 "scraper_id": self.scraper_id,
                 "url": url,
                 "html": html,
+                "proxy": self.proxy,
             }
             out_json = run_webt_api(
                 scrape_json,
@@ -178,6 +183,7 @@ class Scraper:
                 "verbose": self.verbose,
                 "render_js": self.render_js,
                 "schema": self.schema,
+                "proxy": self.proxy,
             }
         else:
             get_json = {
@@ -195,6 +201,7 @@ class Scraper:
                 "verbose": self.verbose,
                 "render_js": scraper["render_js"],
                 "schema": scraper["schema"],
+                "proxy": scraper["proxy"]
             }
 
 
@@ -231,6 +238,7 @@ def get_scraper(scraper_id, api_key: str = None):
             schema=scraper["schema"],
             render_js=scraper["render_js"],
             api_key=api_key,
+            proxy=scraper['proxy'],
             _created=True,
         )
 

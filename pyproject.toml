@@ -1,7 +1,7 @@
 
 [tool.poetry]
 name = "webtranspose"
-version = "0.3.1"
+version = "0.3.2"
 description = "Reliable APIs for the website data"
 authors = ["Mike Gee <mike@webtranspose.com>"]
 

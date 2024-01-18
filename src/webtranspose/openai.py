@@ -18,7 +18,7 @@ class OpenAIScraper:
             chunk_size (int, optional): The size of each chunk of text to process. Defaults to 2500.
             overlap_size (int, optional): The size of the overlap between chunks. Defaults to 100.
         """
-        self.api_key = os.environ["OPENAI_API_KEY"]
+        self.api_key = os.environ.get("OPENAI_API_KEY")
         self.encoding = tiktoken.encoding_for_model("gpt-3.5-turbo")
         self.chunk_size = chunk_size
         self.overlap_size = overlap_size
